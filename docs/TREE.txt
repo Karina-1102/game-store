@@ -1,0 +1,84 @@
+game-store/
+├── app
+│   ├── 404
+│   │   └── page.tsx
+│   ├── [[...path]]
+│   │   └── page.tsx
+│   ├── api
+│   │   └── [...path]
+│   │       └── route.ts
+│   ├── setup
+│   │   └── page.tsx
+│   ├── error.tsx
+│   ├── global-error.tsx
+│   ├── globals.css
+│   ├── layout.tsx
+│   ├── loading.tsx
+│   ├── not-found.tsx
+│   ├── robots.ts
+│   └── sitemap.ts
+├── components
+│   ├── admin.tsx
+│   ├── catalog-editor.tsx
+│   ├── setup-form.tsx
+│   ├── store.tsx
+│   └── ui.tsx
+├── docs
+│   ├── ADMIN-UPDATE.md
+│   ├── API.md
+│   ├── SOURCE.md
+│   ├── TREE.txt
+│   └── VERIFICATION.md
+├── lib
+│   ├── catalog.ts
+│   ├── client-id.ts
+│   ├── db.ts
+│   ├── mail.ts
+│   ├── money.ts
+│   ├── orders.ts
+│   ├── payments.ts
+│   ├── security.ts
+│   ├── settings.ts
+│   ├── slug.ts
+│   ├── storage.ts
+│   └── validation.ts
+├── prisma
+│   ├── migrations
+│   │   ├── 20261014000000_init
+│   │   │   └── migration.sql
+│   │   ├── 20261014010000_store_settings
+│   │   │   └── migration.sql
+│   │   └── migration_lock.toml
+│   ├── schema.prisma
+│   └── seed.ts
+├── public
+│   ├── assets
+│   │   ├── roblox.webp
+│   │   ├── standoff-2.webp
+│   │   ├── telegram.webp
+│   │   └── warface.webp
+│   └── uploads
+│       └── .gitkeep
+├── scripts
+│   ├── create-admin.ts
+│   ├── dev.mjs
+│   └── maintenance.ts
+├── tests
+│   ├── admin-ui.tsx
+│   ├── integration.ts
+│   ├── routes.ts
+│   └── security.test.ts
+├── .dockerignore
+├── .env.example
+├── .gitignore
+├── AGENTS.md
+├── Dockerfile
+├── README.md
+├── docker-compose.yml
+├── next-env.d.ts
+├── next.config.ts
+├── package-lock.json
+├── package.json
+├── postcss.config.mjs
+├── proxy.ts
+└── tsconfig.json

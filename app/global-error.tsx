@@ -1,0 +1,2 @@
+'use client';
+export default function GlobalError({reset}:{reset:()=>void}){return <html lang="ru"><body style={{margin:0,background:'#0c0e14',color:'#f4f5fa',fontFamily:'Arial,sans-serif'}}><main style={{maxWidth:700,margin:'100px auto',padding:30}}><p>Ошибка 500</p><h1>Сервис временно недоступен</h1><p>Попробуйте обновить страницу.</p><button onClick={reset}>Повторить</button><p><a href="/" style={{color:'#b5fb5b'}}>На главную</a></p></main></body></html>;}

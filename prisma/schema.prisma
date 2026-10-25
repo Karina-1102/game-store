@@ -1,0 +1,238 @@
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
+enum Role {
+ USER
+ ADMIN
+}
+enum OrderStatus {
+ NEW
+ AWAITING_PAYMENT
+ PAID
+ PROCESSING
+ COMPLETED
+ CANCELLED
+ REFUNDED
+ PAYMENT_FAILED
+}
+model User {
+ id String @id @default(cuid())
+ email String @unique
+ passwordHash String
+ name String @default("")
+ role Role @default(USER)
+ blocked Boolean @default(false)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ sessions Session[]
+ resets PasswordReset[]
+ orders Order[]
+ logs AdminLog[]
+ tickets Ticket[]
+}
+model Session {
+ id String @id @default(cuid())
+ tokenHash String @unique
+ userId String
+ user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ expiresAt DateTime
+ createdAt DateTime @default(now())
+ @@index([userId])
+ @@index([expiresAt])
+}
+model PasswordReset {
+ id String @id @default(cuid())
+ tokenHash String @unique
+ userId String
+ user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ expiresAt DateTime
+ createdAt DateTime @default(now())
+ @@index([expiresAt])
+}
+model Game {
+ id String @id @default(cuid())
+ name String
+ slug String @unique
+ aliases String[]
+ description String
+ image String @default("")
+ logo String @default("")
+ published Boolean @default(true)
+ sortOrder Int @default(0)
+ fields Json @default("[]")
+ saleAllowed Boolean @default(false)
+ permissionReference String @default("")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ categories Category[]
+ products Product[]
+}
+model Category {
+ id String @id @default(cuid())
+ name String
+ slug String @unique
+ gameId String
+ game Game @relation(fields: [gameId], references: [id], onDelete: Restrict)
+ products Product[]
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([gameId])
+}
+model Product {
+ id String @id @default(cuid())
+ name String
+ slug String @unique
+ gameId String
+ game Game @relation(fields: [gameId], references: [id], onDelete: Restrict)
+ categoryId String?
+ category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+ parentId String?
+ parent Product? @relation("Variants", fields: [parentId], references: [id], onDelete: SetNull)
+ variants Product[] @relation("Variants")
+ aliases String[]
+ tags String[]
+ description String
+ image String @default("")
+ price Int
+ oldPrice Int?
+ currency String @default("usd")
+ amount Int
+ stock Int @default(100)
+ published Boolean @default(true)
+ minQuantity Int @default(1)
+ maxQuantity Int @default(10)
+ deliveryMethod String @default("MANUAL")
+ instruction String @default("")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ images ProductImage[]
+ fields ProductField[]
+ orderItems OrderItem[]
+ @@index([gameId, published])
+ @@index([categoryId])
+ @@index([price])
+ @@index([parentId])
+}
+model ProductImage {
+ id String @id @default(cuid())
+ productId String
+ product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+ url String
+ sortOrder Int @default(0)
+ createdAt DateTime @default(now())
+ @@index([productId])
+}
+model ProductField {
+ id String @id @default(cuid())
+ productId String
+ product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+ key String
+ label String
+ type String
+ required Boolean @default(true)
+ options String[]
+ sortOrder Int @default(0)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([productId, key])
+}
+model Order {
+ id String @id @default(cuid())
+ userId String
+ user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+ status OrderStatus @default(NEW)
+ total Int
+ currency String
+ checkoutKey String
+ internalComment String @default("")
+ expiresAt DateTime
+ stockReleased Boolean @default(false)
+ paidAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ items OrderItem[]
+ payment Payment?
+ @@unique([userId, checkoutKey])
+ @@index([userId, createdAt])
+ @@index([status, createdAt])
+}
+model OrderItem {
+ id String @id @default(cuid())
+ orderId String
+ order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+ productId String
+ product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+ name String
+ gameName String
+ quantity Int
+ unitPrice Int
+ deliveryData Json
+ fieldsSnapshot Json
+ createdAt DateTime @default(now())
+ @@index([orderId])
+ @@index([productId])
+}
+model Payment {
+ id String @id @default(cuid())
+ orderId String @unique
+ order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+ provider String @default("stripe")
+ providerId String? @unique
+ intentId String? @unique
+ url String?
+ amount Int
+ currency String
+ status String @default("CREATED")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ events PaymentEvent[]
+}
+model PaymentEvent {
+ id String @id
+ paymentId String?
+ payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+ type String
+ result String
+ createdAt DateTime @default(now())
+ @@index([paymentId])
+}
+model AdminLog {
+ id String @id @default(cuid())
+ adminId String
+ admin User @relation(fields: [adminId], references: [id], onDelete: Restrict)
+ action String
+ object String
+ objectId String
+ before Json?
+ after Json?
+ createdAt DateTime @default(now())
+ @@index([createdAt])
+}
+model RateLimit {
+ key String @id
+ count Int
+ expiresAt DateTime
+}
+model Ticket {
+ id String @id @default(cuid())
+ userId String
+ user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+ subject String
+ message String
+ reply String @default("")
+ status String @default("OPEN")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([userId, createdAt])
+}
+model StoreSetting {
+ id String @id @default("main")
+ name String
+ supportEmail String @default("")
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}

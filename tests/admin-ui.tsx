@@ -1,0 +1,72 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {writeFileSync} from 'node:fs';
+import {JSDOM} from 'jsdom';
+import sharp from 'sharp';
+import {db} from '../lib/db';
+const base=process.env.APP_URL||'http://localhost:3100';
+const nativeFetch=globalThis.fetch;
+
+test('admin forms create, upload, publish, edit and hide through real PostgreSQL-backed HTTP',async()=>{
+ const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:base+'/admin'});
+ for(const key of ['window','document','navigator','HTMLElement','HTMLDialogElement','HTMLInputElement','File','FileReader','Blob','FormData','Event','MouseEvent','getComputedStyle'])Object.defineProperty(globalThis,key,{value:(dom.window as any)[key],configurable:true,writable:true});
+ (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
+ dom.window.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};dom.window.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
+ dom.window.confirm=()=>true;URL.createObjectURL=()=> 'blob:test-preview';URL.revokeObjectURL=()=>{};
+ const {render,screen,within,waitFor,cleanup}=await import('@testing-library/react');
+ const userEvent=(await import('@testing-library/user-event')).default;
+ const Admin=(await import('../components/admin')).default;
+ const marker=Date.now();const email=`ui-admin-${marker}@example.com`;const password='LocalUiTestPassword123!';
+ let cookie='';let adminId='';let createdGameId='';let passed=false;
+ const send=async(path:string,method='GET',body?:any)=>{const r=await nativeFetch(base+'/api/'+path,{method,headers:{Origin:base,Cookie:cookie,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined});return {r,data:await r.json()};};
+ try{
+  const availability=await send('auth/setup');assert.equal(availability.data.available,true,'Use a fresh local development test database');
+  const setup=await send('auth/setup','POST',{email,password,confirmPassword:password});assert.equal(setup.r.status,201);adminId=setup.data.user.id;cookie=setup.r.headers.get('set-cookie')!.split(';')[0];
+  assert.equal((await send('auth/setup')).data.available,false);
+  assert.equal((await send('auth/setup','POST',{email:'other@example.com',password,confirmPassword:password})).r.status,409);
+  const login=await send('auth/login','POST',{email,password});assert.equal(login.r.status,200);cookie=login.r.headers.get('set-cookie')!.split(';')[0];
+  assert.equal((await nativeFetch(base+'/admin',{headers:{Cookie:cookie}})).status,200);
+  globalThis.fetch=async(input:any,init:any={})=>{
+   let body=init.body;
+   const headers={...init.headers,Origin:base,Cookie:cookie};
+   if(body instanceof dom.window.FormData){const boundary='nexus-test-'+crypto.randomUUID();const parts:Buffer[]=[];for(const [key,value] of (body as any).entries()){if(typeof value==='string')parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`));else{const bytes=await new Promise<ArrayBuffer>((resolve,reject)=>{const reader=new dom.window.FileReader();reader.onload=()=>resolve(reader.result as ArrayBuffer);reader.onerror=reject;reader.readAsArrayBuffer(value);});parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"; filename="${value.name}"\r\nContent-Type: ${value.type}\r\n\r\n`),Buffer.from(bytes),Buffer.from('\r\n'));}}parts.push(Buffer.from(`--${boundary}--\r\n`));body=Buffer.concat(parts);headers['Content-Type']='multipart/form-data; boundary='+boundary;}
+   return nativeFetch(new URL(String(input),base),{...init,body,headers});
+  };
+  const notices:string[]=[];const user=userEvent.setup({document:dom.window.document});
+  render(<Admin notify={s=>notices.push(s)}/>);
+  await user.click(screen.getByRole('button',{name:'Товары'}));
+  const add=await screen.findByRole('button',{name:'+ Добавить товар'});await waitFor(()=>assert.equal((add as HTMLButtonElement).disabled,false));await user.click(add);
+  const dialog=screen.getByRole('dialog');const form=within(dialog);
+  await user.type(form.getByLabelText('Название товара'),'1000 Gold');
+  const games=await send('admin/games');const standoff=games.data.find((g:any)=>g.slug==='standoff-2');await user.selectOptions(form.getByLabelText('Игра / приложение'),standoff.id);
+  const amount=form.getByLabelText('Количество игровой валюты');await user.clear(amount);await user.type(amount,'1000');
+  await user.type(form.getByLabelText('Цена (₽)'),'799');
+  await user.type(form.getByLabelText('Описание'),'Пакет создан через обычную форму админки.');
+  const bytes=await sharp({create:{width:40,height:40,channels:3,background:'#55cc77'}}).png().toBuffer();
+  await user.upload(form.getByLabelText('Файл изображения'),new dom.window.File([new Uint8Array(bytes)],'phone-photo.png',{type:'image/png'}));
+  await waitFor(()=>assert.ok(form.getByAltText('Превью: Изображение').getAttribute('src')?.startsWith('/api/images/')),{timeout:10000});
+  await user.click(form.getByRole('button',{name:'Сохранить товар'}));
+  await waitFor(()=>assert.equal(!!screen.queryByRole('dialog'),false),{timeout:10000});
+  console.log('Product created through form');const result=await send('admin/products?q=1000%20Gold');const product=result.data.items.find((p:any)=>p.price===79900&&p.description.includes('обычную форму'));assert.ok(product);assert.equal(product.gameId,standoff.id);assert.equal(product.amount,1000);
+  assert.equal((await nativeFetch(base+product.image)).status,200);
+  const page=await send('games/standoff-2');assert.ok(page.data.items.some((p:any)=>p.id===product.id));
+  assert.ok((await send('search?q=1000%20Gold')).data.products.some((p:any)=>p.id===product.id));
+  assert.equal((await nativeFetch(base+'/products/'+product.slug)).status,200);
+  let card=await screen.findAllByRole('heading',{name:'1000 Gold'});const currentCard=card.find(h=>h.closest('article')?.textContent?.includes('799'))!.closest('article')!;
+  await user.click(within(currentCard as HTMLElement).getByRole('button',{name:'Редактировать'}));
+  const editing=within(screen.getByRole('dialog'));const price=editing.getByLabelText('Цена (₽)');assert.equal((price as HTMLInputElement).value,'799');await user.clear(price);await user.type(price,'749');await user.click(editing.getByRole('button',{name:'Сохранить товар'}));
+  await waitFor(()=>assert.equal(!!screen.queryByRole('dialog'),false),{timeout:10000});assert.equal((await send('products/'+product.slug)).data.price,74900);
+  await waitFor(()=>assert.ok(Array.from(document.querySelectorAll('article')).some(a=>a.textContent?.includes('1000 Gold')&&a.textContent?.includes('749'))));
+  const editedCard=Array.from(document.querySelectorAll('article')).find(a=>a.textContent?.includes('1000 Gold')&&a.textContent?.includes('749'))!;
+  await user.click(within(editedCard).getByRole('button',{name:'Скрыть'}));await waitFor(async()=>assert.equal((await send('admin/products/'+product.id)).data.published,false));assert.equal((await send('products/'+product.slug)).r.status,404);assert.ok(!(await send('search?q=1000%20Gold')).data.products.some((p:any)=>p.id===product.id));
+  await waitFor(()=>assert.ok(within(editedCard).queryByRole('button',{name:'Показать'})));await user.click(within(editedCard).getByRole('button',{name:'Показать'}));await waitFor(async()=>assert.equal((await send('products/'+product.slug)).r.status,200));
+  await user.click(screen.getByRole('button',{name:'Игры'}));await user.click(await screen.findByRole('button',{name:'+ Добавить игру'}));
+  const gameForm=within(screen.getByRole('dialog'));await user.type(gameForm.getByLabelText('Название игры'),'PUBG Mobile');await user.type(gameForm.getByLabelText('Описание'),'Новая игра через сайт');await user.click(gameForm.getByRole('button',{name:'Сохранить игру'}));await waitFor(()=>assert.equal(!!screen.queryByRole('dialog'),false),{timeout:10000});
+  const pubg=(await send('games')).data.find((g:any)=>g.slug==='pubg-mobile');assert.ok(pubg);createdGameId=pubg.id;assert.equal((await nativeFetch(base+'/games/pubg-mobile')).status,200);
+  await user.click(screen.getByRole('button',{name:'Товары'}));await user.click(await screen.findByRole('button',{name:'+ Добавить товар'}));const pubgForm=within(screen.getByRole('dialog'));await user.type(pubgForm.getByLabelText('Название товара'),'60 UC');await user.selectOptions(pubgForm.getByLabelText('Игра / приложение'),pubg.id);const uc=pubgForm.getByLabelText('Количество игровой валюты');await user.clear(uc);await user.type(uc,'60');await user.type(pubgForm.getByLabelText('Цена (₽)'),'99,90');await user.click(pubgForm.getByRole('button',{name:'Сохранить товар'}));await waitFor(()=>assert.equal(!!screen.queryByRole('dialog'),false),{timeout:10000});assert.ok((await send('games/pubg-mobile')).data.items.some((p:any)=>p.price===9990));
+  await user.click(screen.getByRole('button',{name:'Настройки'}));await user.type(await screen.findByLabelText('Электронная почта поддержки'),'support@example.com');await user.click(screen.getByRole('button',{name:'Сохранить настройки'}));await waitFor(async()=>assert.equal((await send('config')).data.supportEmail,'support@example.com'));
+  assert.ok(notices.includes('Товар сохранён и доступен покупателям'));assert.ok(!document.querySelector('pre'));
+  writeFileSync('/tmp/game-store-admin-persistence.json',JSON.stringify({productId:product.id,slug:product.slug,price:74900,image:product.image,gameId:createdGameId,adminId}));
+  passed=true;console.log('UI persisted 1000 Gold: 799 ₽ → 749 ₽; image, search, hide/show and PUBG Mobile passed');
+ }finally{cleanup();globalThis.fetch=nativeFetch;dom.window.close();if(!passed&&adminId){await db.adminLog.deleteMany({where:{adminId}});await db.user.deleteMany({where:{id:adminId}});}await db.$disconnect();}
+});
