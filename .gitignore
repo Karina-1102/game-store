@@ -1,5 +1,6 @@
 node_modules/
 .next/
+next-env.d.ts
 .env
 .env.*
 !.env.example
@@ -7,3 +8,4 @@ public/uploads/*
 !public/uploads/.gitkeep
 *.tsbuildinfo
 coverage/
+
