@@ -7,3 +7,4 @@ const globalForPrisma = globalThis as typeof globalThis & {
 export const prisma =
   globalForPrisma.prisma ??
   (globalForPrisma.prisma = new PrismaClient());
+// fix: globalThis casting for PrismaClient
